@@ -1,0 +1,51 @@
+name: Build and Deploy to Local K8s
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  # Converts the repository name to lowercase to safely match Docker naming rules
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to GitHub Container Registry
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+    - name: Build and Push Docker Images
+      run: |
+        # Define lowercase tags
+        BACKEND_TAG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ github.sha }}" | tr '[:upper:]' '[:lower:]')
+        FRONTEND_TAG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }}" | tr '[:upper:]' '[:lower:]')
+        
+        # Build images
+        docker build -t $BACKEND_TAG ./backend
+        docker build -t $FRONTEND_TAG ./frontend
+        
+        # Push images to GHCR
+        docker push $BACKEND_TAG
+        docker push $FRONTEND_TAG
+        
+        # Save tags to environment variables for subsequent steps
+        echo "BACKEND_TAG=$BACKEND_TAG" >> $GITHUB_ENV
+        echo "FRONTEND_TAG=$FRONTEND_TAG" >> $GITHUB_ENV
+
+    - name: Deploy to Minikube
+      run: |
+        # Inject the freshly built image tags into the K8s manifests
+        sed -i "s|__BACKEND_IMAGE_TAG__|${{ env.BACKEND_TAG }}|g" k8s/backend-deployment.yaml
+        sed -i "s|__FRONTEND_IMAGE_TAG__|${{ env.FRONTEND_TAG }}|g" k8s/frontend-deployment.yaml
+        
+        # Deploy using your local machine's kubectl context
+        kubectl apply -f k8s/backend-deployment.yaml
+        kubectl apply -f k8s/backend-service.yaml
+        kubectl apply -f k8s/frontend-deployment.yaml
+        kubectl apply -f k8s/frontend-service.yaml
