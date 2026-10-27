@@ -12,13 +12,17 @@ env:
 jobs:
   build-and-deploy:
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Log in to GitHub Container Registry
       run: |
-        echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+        docker login ${{ env.REGISTRY }} -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}"
 
     - name: Build and Push Docker Images
       run: |
