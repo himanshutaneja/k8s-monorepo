@@ -25,31 +25,34 @@ jobs:
         docker login ${{ env.REGISTRY }} -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}"
 
     - name: Build and Push Docker Images
+      shell: pwsh
       run: |
-        # Define lowercase tags
-        BACKEND_TAG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ github.sha }}" | tr '[:upper:]' '[:lower:]')
-        FRONTEND_TAG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }}" | tr '[:upper:]' '[:lower:]')
+        # Use GitHub Actions functions to force lowercase strings natively
+        $backendTag = "${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}".ToLower()
+        $frontendTag = "${{ env.REGISTRY }}/${{ github.repository }}/frontend:${{ github.sha }}".ToLower()
         
         # Build images
-        docker build -t $BACKEND_TAG ./backend
-        docker build -t $FRONTEND_TAG ./frontend
+        docker build -t $backendTag ./backend
+        docker build -t $frontendTag ./frontend
         
         # Push images to GHCR
-        docker push $BACKEND_TAG
-        docker push $FRONTEND_TAG
+        docker push $backendTag
+        docker push $frontendTag
         
         # Save tags to environment variables for subsequent steps
-        echo "BACKEND_TAG=$BACKEND_TAG" >> $GITHUB_ENV
-        echo "FRONTEND_TAG=$FRONTEND_TAG" >> $GITHUB_ENV
+        echo "BACKEND_TAG=$backendTag" >> $env:GITHUB_ENV
+        echo "FRONTEND_TAG=$frontendTag" >> $env:GITHUB_ENV
 
     - name: Deploy to Minikube
+      shell: pwsh
       run: |
-        # Inject the freshly built image tags into the K8s manifests
-        sed -i "s|__BACKEND_IMAGE_TAG__|${{ env.BACKEND_TAG }}|g" k8s/backend-deployment.yaml
-        sed -i "s|__FRONTEND_IMAGE_TAG__|${{ env.FRONTEND_TAG }}|g" k8s/frontend-deployment.yaml
+        # Use PowerShell formatting to safely swap placeholders in files on Windows
+        (Get-Content k8s/backend-deployment.yaml) -replace '__BACKEND_IMAGE_TAG__', "${{ env.BACKEND_TAG }}" | Set-Content k8s/backend-deployment.yaml
+        (Get-Content k8s/frontend-deployment.yaml) -replace '__FRONTEND_IMAGE_TAG__', "${{ env.FRONTEND_TAG }}" | Set-Content k8s/frontend-deployment.yaml
         
         # Deploy using your local machine's kubectl context
         kubectl apply -f k8s/backend-deployment.yaml
         kubectl apply -f k8s/backend-service.yaml
         kubectl apply -f k8s/frontend-deployment.yaml
         kubectl apply -f k8s/frontend-service.yaml
+
