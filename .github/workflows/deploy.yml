@@ -25,11 +25,14 @@ jobs:
         docker login ${{ env.REGISTRY }} -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}"
 
     - name: Build and Push Docker Images
-      shell: pwsh
+      shell: powershell
       run: |
-        # Use GitHub Actions functions to force lowercase strings natively
-        $backendTag = "${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}".ToLower()
-        $frontendTag = "${{ env.REGISTRY }}/${{ github.repository }}/frontend:${{ github.sha }}".ToLower()
+        # Use PowerShell string manipulation to lowercase the image paths
+        $rawBackend = "${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}"
+        $rawFrontend = "${{ env.REGISTRY }}/${{ github.repository }}/frontend:${{ github.sha }}"
+        
+        $backendTag = $rawBackend.ToLower()
+        $frontendTag = $rawFrontend.ToLower()
         
         # Build images
         docker build -t $backendTag ./backend
@@ -39,14 +42,14 @@ jobs:
         docker push $backendTag
         docker push $frontendTag
         
-        # Save tags to environment variables for subsequent steps
-        echo "BACKEND_TAG=$backendTag" >> $env:GITHUB_ENV
-        echo "FRONTEND_TAG=$frontendTag" >> $env:GITHUB_ENV
+        # Windows PowerShell syntax to append to the GitHub Env file
+        Add-Content -Path $env:GITHUB_ENV -Value "BACKEND_TAG=$backendTag"
+        Add-Content -Path $env:GITHUB_ENV -Value "FRONTEND_TAG=$frontendTag"
 
     - name: Deploy to Minikube
-      shell: pwsh
+      shell: powershell
       run: |
-        # Use PowerShell formatting to safely swap placeholders in files on Windows
+        # Use native Windows file replacement instead of Linux sed
         (Get-Content k8s/backend-deployment.yaml) -replace '__BACKEND_IMAGE_TAG__', "${{ env.BACKEND_TAG }}" | Set-Content k8s/backend-deployment.yaml
         (Get-Content k8s/frontend-deployment.yaml) -replace '__FRONTEND_IMAGE_TAG__', "${{ env.FRONTEND_TAG }}" | Set-Content k8s/frontend-deployment.yaml
         
@@ -55,4 +58,3 @@ jobs:
         kubectl apply -f k8s/backend-service.yaml
         kubectl apply -f k8s/frontend-deployment.yaml
         kubectl apply -f k8s/frontend-service.yaml
-
